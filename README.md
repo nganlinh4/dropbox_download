@@ -29,3 +29,5 @@ pip install dropbox python-dotenv
 ```
 
 The tool creates multiple download processes using different ordering strategies (normal, reverse, random) to maximize download speed.
+
+Remember to change access key and run again whenener a tmux terminal got access key expired error. Since this tool also check file sizes during iteration, running again also helps to scan and ensure no file is imcomplete.
