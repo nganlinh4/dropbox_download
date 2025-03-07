@@ -16,10 +16,10 @@ function App() {
   const [dropboxToken, setDropboxToken] = useState('');
   const [sharedLink, setSharedLink] = useState('');
   const [destinationPath, setDestinationPath] = useState('');
-  const [setFormattedSpeed] = useState('0.00 MB/s');
-  const [speedHistory] = useState([]);
+  const [formattedSpeed, setFormattedSpeed] = useState('0.00 MB/s');
+  const [speedHistory, setSpeedHistory] = useState([]);
   const [concurrentDownloads, setConcurrentDownloads] = useState(2);
-  const [setProcessLogs] = useState({});
+  const [processLogs, setProcessLogs] = useState({});
   const [isConnected, setIsConnected] = useState(false);
   const [downloadTasks, setDownloadTasks] = useState({});
   const [folderSize, setFolderSize] = useState(0);
@@ -129,10 +129,9 @@ function App() {
       });
       const data = await response.json();
       setIsConnected(data.connected);
-      if (data.connected) {
-        alert('Successfully connected to Dropbox!');
-      } else {
-        alert('Failed to connect to Dropbox. Check your token.');
+      if (!data.connected) {
+          alert('Failed to connect to Dropbox. Check your token.');
+          setIsConnected(false);
       }
     } catch (error) {
       console.error('Error checking connection:', error);
