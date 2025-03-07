@@ -223,11 +223,11 @@ let downloadId;
 let downloadProgressMap = {};
 // Endpoint to clear the destination folder
 app.post('/api/clear-destination', async (req, res) => {
-  if (!currentDownloadParams || !currentDownloadParams.destinationPath) {
-    return res.status(400).json({ error: 'Destination path is required' });
+  const { destinationPath } = req.body;
+  if (!destinationPath) {
+    return res.status(400).json({ error: 'Destination path is required in request body' });
   }
 
-  const destinationPath = currentDownloadParams.destinationPath;
 
   try {
     // Function to recursively delete files and directories

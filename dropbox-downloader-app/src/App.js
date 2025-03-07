@@ -235,7 +235,7 @@ function App() {
       const response = await fetch('http://localhost:3001/api/stop-download', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         }
       });
 
@@ -293,17 +293,28 @@ function App() {
   }
 
   const clearDestination = async () => {
+    if (!destinationPath) {
+      alert('Please set a destination path first');
+      return;
+    }
+
     try {
       const response = await fetch('http://localhost:3001/api/clear-destination', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-        }
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ destinationPath })
       });
 
-      if (response.ok) {
-        alert('Destination folder cleared successfully!');
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to clear destination');
       }
+
+      alert(data.message || 'Destination folder cleared successfully!');
+      setFileCount(0);
     } catch (error) {
       console.error('Error clearing destination folder:', error);
       alert('Error clearing destination folder. See console for details.');
