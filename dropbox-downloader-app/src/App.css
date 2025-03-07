@@ -74,7 +74,7 @@ body {
 .control-button {
   border-radius: 16px !important;
   text-transform: none !important;
-  padding: 12px 32px !important;
+  padding: 12px 24px !important;
   font-weight: 600 !important;
   letter-spacing: 0.5px !important;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
