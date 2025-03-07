@@ -221,6 +221,38 @@ app.get('/api/folder-size', (req, res) => {
 
 let downloadId;
 let downloadProgressMap = {};
+// Endpoint to clear the destination folder
+app.post('/api/clear-destination', async (req, res) => {
+  if (!currentDownloadParams || !currentDownloadParams.destinationPath) {
+    return res.status(400).json({ error: 'Destination path is required' });
+  }
+
+  const destinationPath = currentDownloadParams.destinationPath;
+
+  try {
+    // Function to recursively delete files and directories
+    const deleteDirectory = (dirPath) => {
+      if (fs.existsSync(dirPath)) {
+        fs.readdirSync(dirPath).forEach((file) => {
+          const curPath = path.join(dirPath, file);
+          if (fs.lstatSync(curPath).isDirectory()) {
+            deleteDirectory(curPath); // Recursive call for subdirectories
+          } else {
+            fs.unlinkSync(curPath); // Delete file
+          }
+        });
+        fs.rmdirSync(dirPath); // Delete the directory itself
+      }
+    };
+
+    deleteDirectory(destinationPath);
+    res.json({ message: 'Destination folder cleared successfully' });
+  } catch (error) {
+    console.error('Error clearing destination folder:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 let pidToDownloadId = {};
 
 app.post('/api/download', async (req, res) => {

@@ -207,6 +207,24 @@ function App() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
   }
 
+  const clearDestination = async () => {
+    try {
+      const response = await fetch('http://localhost:3001/api/clear-destination', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (response.ok) {
+        alert('Destination folder cleared successfully!');
+      }
+    } catch (error) {
+      console.error('Error clearing destination folder:', error);
+      alert('Error clearing destination folder. See console for details.');
+    }
+  };
+
   return (
     <Container maxWidth="md">
       <Box sx={{ my: 4 }}>
@@ -258,9 +276,14 @@ function App() {
           </Button>
 
           {Object.keys(downloadTasks).length > 0 && (
-            <Button variant="contained" color="error" onClick={stopDownload}>
-              Stop Download
-            </Button>
+            <>
+              <Button variant="contained" color="error" onClick={stopDownload}>
+                Stop Download
+              </Button>
+              <Button variant="contained" color="secondary" onClick={clearDestination}>
+                Clear Destination
+              </Button>
+            </>
           )}
         </Box>
 
