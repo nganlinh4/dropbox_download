@@ -22,6 +22,8 @@ function App() {
   const [processLogs, setProcessLogs] = useState({});
   const [isConnected, setIsConnected] = useState(false);
   const [downloadTasks, setDownloadTasks] = useState({});
+  const [folderSize, setFolderSize] = useState(0);
+const [fileCount, setFileCount] = useState(0);
   const [loading, setLoading] = useState({
     connection: false,
     download: false,
@@ -47,20 +49,32 @@ function App() {
     }
   };
 
-  // Monitor download speed
-  useEffect(() => {
-    let intervalId;
+    useEffect(() => {
+let fileCountIntervalId;
+    let folderSizeIntervalId;
+
     if (Object.keys(downloadTasks).length > 0) {
-      intervalId = setInterval(async () => {
-        const response = await fetch('http://localhost:3001/api/download-speed');
+      // Monitor folder size
+      folderSizeIntervalId = setInterval(async () => {
+        const response = await fetch('http://localhost:3001/api/folder-size');
         if (response.ok) {
-          const { formatted, average, history } = await response.json();
-          setFormattedSpeed(`${average} MB/s`);
-          setSpeedHistory(history);
+          const { size } = await response.json();
+          setFolderSize(formatBytes(size));
         }
-      }, 1000);
+      }, 3000);
+fileCountIntervalId = setInterval(async () => {
+        const response = await fetch('http://localhost:3001/api/file-count');
+        if (response.ok) {
+          const { count } = await response.json();
+          setFileCount(count);
+        }
+      }, 3000);
     }
-    return () => clearInterval(intervalId);
+
+    return () => {
+      clearInterval(folderSizeIntervalId);
+clearInterval(fileCountIntervalId);
+    };
   }, [downloadTasks]);
 
   useEffect(() => {
@@ -141,6 +155,8 @@ function App() {
         setDownloadTasks({});
         setProcessLogs({});
         setFormattedSpeed('0.00 MB/s');
+        setFolderSize(0);
+setFileCount(0);
       }
     } catch (error) {
       console.error('Error stopping download:', error);
@@ -178,6 +194,18 @@ function App() {
       setLoading({ ...loading, download: false });
     }
   };
+
+  function formatBytes(bytes, decimals = 2) {
+    if (bytes === 0) return '0 Bytes';
+
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+  }
 
   return (
     <Container maxWidth="md">
@@ -247,7 +275,7 @@ function App() {
             <Typography variant='h6' gutterBottom>
               Download Progress
             </Typography>
-            <Box sx={{ width: '100%', bgcolor: 'background.paper', p: 2, borderRadius: 1 }}>
+            <Box sx={{ width: '100%', bgcolor: 'background.paper', p: 2, borderRadius: 1, mb: 2 }}>
               <Typography sx={{ mt: 2 }}>Download Started</Typography>
               <Box sx={{ mt: 2, mb: 2, width: '100%', maxWidth: 500 }}>
                 <Typography gutterBottom>
@@ -256,21 +284,20 @@ function App() {
                 <Slider
                   value={concurrentDownloads}
                   min={2}
-                  max={30}
+                  max={100}
                   onChange={(_, value) => setConcurrentDownloads(value)}
                   onChangeCommitted={(_, value) => adjustConcurrentDownloads(value)}
                   valueLabelDisplay="auto"
                   marks={[
                     { value: 2, label: '2' },
-                    { value: 30, label: '30' }
+                    { value: 100, label: '100' }
                   ]}
                 />
               </Box>
-              <Box sx={{ mt: 2 }}>
-                <Typography>
-                  Download Speed: {formattedSpeed}
-                </Typography>
-              </Box>
+              <Typography sx={{ mt: 1 }}>
+<Typography sx={{ mt: 1 }}>Files: {fileCount}</Typography>
+                Folder Size: {folderSize}
+              </Typography>
             </Box>
             {speedHistory.length > 0 && (
               <Box sx={{ mt: 2, width: '100%', maxWidth: 500 }}>
@@ -285,23 +312,6 @@ function App() {
                   yAxis={[{ label: 'MB/s' }]}
                   height={200}
                 />
-              </Box>
-            )}
-            {Object.keys(processLogs).length > 0 && (
-              <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 2 }}>
-                {console.log("Current processLogs:", processLogs)}
-                {Object.entries(processLogs).map(([pid, logs]) => (
-                  <Box key={pid} sx={{ width: '48%', border: '1px solid grey', p: 1, maxHeight: '150px', overflowY: 'scroll' }}>
-                    <Typography variant="subtitle2" component="div">
-                      <strong>Process {pid}</strong>
-                    </Typography>
-                    {logs.map((log, index) => (
-                      <div key={index} style={{ color: log.type === 'stderr' ? 'red' : 'black', whiteSpace: 'pre-wrap'  }}>
-                        {log.message}
-                      </div>
-                    ))}
-                  </Box>
-                ))}
               </Box>
             )}
           </Box>

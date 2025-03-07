@@ -27,12 +27,6 @@ app.use(express.json());
 
 let currentDownloadParams = null; // Store current download parameters
 
-// Speed monitoring
-let speedMonitorInterval = null;
-let lastFolderSize = 0;
-let currentTransferRate = 0; // Bytes per 5 seconds
-const speeds = []; // Keep a history of speeds
-
 function getFolderSize(dirPath) {
   let totalSize = 0;
   try {
@@ -52,64 +46,39 @@ function getFolderSize(dirPath) {
   return totalSize;
 }
 
-function calculateTransferRate() {
-  if (!currentDownloadParams) return;
-
-  const currentSize = getFolderSize(currentDownloadParams.destinationPath);
-  const transferredBytes = Math.max(0, currentSize - lastFolderSize); // Ensure non-negative
-  const mbTransferred = transferredBytes / (1024 * 1024);
-
-  currentTransferRate = transferredBytes; // Store bytes transferred
-  speeds.push(mbTransferred * 1000 / 5000); // Store MB/s
-    if(speeds.length > 60) {
-        speeds.shift();
+// Function to count files in a directory recursively
+function countFilesInDirectory(dirPath) {
+  let totalFiles = 0;
+  try {
+    const items = fs.readdirSync(dirPath);
+    for (const item of items) {
+      const itemPath = path.join(dirPath, item);
+      const stats = fs.statSync(itemPath);
+      if (stats.isDirectory()) {
+        totalFiles += countFilesInDirectory(itemPath); // Recursively count files in subdirectories
+      } else {
+        totalFiles++; // Count the file
+      }
     }
-
-  console.log(`Folder size changed by: ${transferredBytes} bytes`);
-  console.log(`Transfer rate: ${mbTransferred.toFixed(2)} MB per 5s`);
-
-  lastFolderSize = currentSize;
-}
-
-function startSpeedMonitoring() {
-  console.log('Starting speed monitoring');
-  stopSpeedMonitoring();
-  if (currentDownloadParams) {
-    lastFolderSize = getFolderSize(currentDownloadParams.destinationPath);
+  } catch (err) {
+    console.error('Error counting files:', err);
   }
-  currentTransferRate = 0;
-  speeds.length = 0;
-  speedMonitorInterval = setInterval(calculateTransferRate, 5000);
+  return totalFiles;
 }
 
-function stopSpeedMonitoring() {
-  if (speedMonitorInterval) {
-    console.log('Stopping speed monitoring');
-    clearInterval(speedMonitorInterval);
-    speedMonitorInterval = null;
+// Endpoint to get current file count in destination folder
+app.get('/api/file-count', (req, res) => {
+  if (!currentDownloadParams || !currentDownloadParams.destinationPath) {
+    return res.json({ count: 0 });
   }
-  lastFolderSize = 0;
-  currentTransferRate = 0;
-  speeds.length = 0;
-}
 
-// Endpoint to get current download speed
-app.get('/api/download-speed', (req, res) => {
-    calculateTransferRate();
-  const mbPer5Sec = currentTransferRate / (1024 * 1024);
-
-    let averageSpeed = 0;
-    if (speeds.length > 0) {
-        const sum = speeds.reduce((acc, val) => acc + val, 0);
-        averageSpeed = sum / speeds.length; // Average in MB/s
-    }
-
-  res.json({
-    speed: currentTransferRate,
-    formatted: mbPer5Sec.toFixed(2),
-    average: averageSpeed.toFixed(2),
-    history: speeds
-  });
+  try {
+    const fileCount = countFilesInDirectory(currentDownloadParams.destinationPath);
+    res.json({ count: fileCount });
+  } catch (error) {
+    console.error('Error getting file count:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.post('/api/check-connection', async (req, res) => {
@@ -133,11 +102,26 @@ app.post('/api/check-connection', async (req, res) => {
 app.post('/api/adjust-concurrent', async (req, res) => {
   const { count } = req.body;
 
-  if (count < 2 || count > 30) {
-    return res.status(400).json({ error: 'Count must be between 2 and 30' });
+  if (count < 2 || count > 100) {
+    return res.status(400).json({ error: 'Count must be between 2 and 100' });
   }
 
   if (!currentDownloadParams) {
+// Endpoint to get the current size of the destination folder
+app.get('/api/folder-size', (req, res) => {
+  if (!currentDownloadParams || !currentDownloadParams.destinationPath) {
+    return res.json({ size: 0 });
+  }
+
+  try {
+    const size = getFolderSize(currentDownloadParams.destinationPath);
+    res.json({ size });
+  } catch (error) {
+    console.error('Error getting folder size:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
     return res.status(400).json({ error: 'No active download session' });
   }
 
@@ -148,22 +132,52 @@ app.post('/api/adjust-concurrent', async (req, res) => {
       .filter(process => process.name === 'download_dropbox_random.py');
 
     const currentCount = randomProcesses.length;
+    console.log(`Current random process count: ${currentCount}, requested: ${count}`);
 
     if (count > currentCount) {
       // Need to spawn more processes
       const toSpawn = count - currentCount;
-      for (let i = 0; i < toSpawn; i++) {
-        Object.keys(downloadProgressMap).forEach(downloadId => {
-          const { dropboxToken, sharedLink, destinationPath } = currentDownloadParams;
+      console.log(`Spawning ${toSpawn} new random download processes`);
+      
+      // Get the first download ID (assuming single download session)
+      const activeDownloadId = Object.keys(downloadProgressMap)[0];
+      
+      if (activeDownloadId) {
+        const { dropboxToken, sharedLink, destinationPath } = currentDownloadParams;
+        
+        for (let i = 0; i < toSpawn; i++) {
           const pyProcess = spawn('bash', ['-c',
             `source venv/bin/activate && python3 "${path.join(__dirname, 'download_dropbox_random.py')}" ` +
             `"${dropboxToken}" "${sharedLink}" "${destinationPath}" "download_dropbox_random.py"`
           ]);
 
           console.log(`Spawned new random download process with PID: ${pyProcess.pid}`);
-          downloadProgressMap[downloadId].processes.push({pid: pyProcess.pid, name: 'download_dropbox_random.py'});
-          pidToDownloadId[pyProcess.pid] = downloadId;
-        });
+          downloadProgressMap[activeDownloadId].processes.push({pid: pyProcess.pid, name: 'download_dropbox_random.py'});
+          pidToDownloadId[pyProcess.pid] = activeDownloadId;
+          
+          // Set up event listeners for this process
+          pyProcess.stdout.on('data', (data) => {
+            const logMessage = `stdout (download_dropbox_random.py): ${data}`;
+            console.log("Emitting log:", { type: 'stdout', message: logMessage, pid: pyProcess.pid });
+            io.emit('log', { type: 'stdout', message: logMessage, pid: pyProcess.pid });
+          });
+          
+          pyProcess.stderr.on('data', (data) => {
+            const logMessage = `stderr (download_dropbox_random.py): ${data}`;
+            console.log("Emitting log:", { type: 'stderr', message: logMessage, pid: pyProcess.pid });
+            io.emit('log', { type: 'stderr', message: logMessage, pid: pyProcess.pid });
+          });
+          
+          pyProcess.on('close', (code) => {
+            console.log(`child process (download_dropbox_random.py) exited with code ${code}`);
+            if (downloadProgressMap[activeDownloadId]) {
+              const index = downloadProgressMap[activeDownloadId].processes.findIndex(p => p.pid === pyProcess.pid);
+              if (index > -1) {
+                downloadProgressMap[activeDownloadId].processes.splice(index, 1);
+              }
+            }
+          });
+        }
       }
     } else if (count < currentCount) {
       // Need to kill some processes
@@ -171,16 +185,39 @@ app.post('/api/adjust-concurrent', async (req, res) => {
       console.log(`Killing ${toKill} random download processes`);
       const processesToKill = randomProcesses.slice(0, toKill);
       processesToKill.forEach(process => {
+        console.log(`Killing process with PID: ${process.pid}`);
         require('child_process').spawn('kill', ['-9', process.pid.toString()]);
       });
     }
 
-    res.json({ message: 'Concurrent downloads adjusted successfully' });
+    res.json({ 
+      message: 'Concurrent downloads adjusted successfully',
+      currentCount: count,
+      processPIDs: Object.values(downloadProgressMap)
+        .flatMap(info => info.processes)
+        .filter(process => process.name === 'download_dropbox_random.py')
+        .map(process => process.pid)
+    });
   } catch (error) {
     console.error('Error adjusting concurrent downloads:', error);
     res.status(500).json({ error: error.message });
   }
 });
+// Endpoint to get the current size of the destination folder
+app.get('/api/folder-size', (req, res) => {
+  if (!currentDownloadParams || !currentDownloadParams.destinationPath) {
+    return res.json({ size: 0 });
+  }
+
+  try {
+    const size = getFolderSize(currentDownloadParams.destinationPath);
+    res.json({ size });
+  } catch (error) {
+    console.error('Error getting folder size:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 let downloadId;
 let downloadProgressMap = {};
@@ -246,8 +283,6 @@ app.post('/api/download', async (req, res) => {
       return pyProcess;
     };
 
-    startSpeedMonitoring();
-
     spawnPythonScript('download_dropbox.py');
     spawnPythonScript('download_dropbox_reverse.py');
     for (let i = 0; i < 20; i++) {
@@ -259,7 +294,6 @@ app.post('/api/download', async (req, res) => {
   } catch (error) {
     console.error('Error starting download:', error);
     currentDownloadParams = null;
-    stopSpeedMonitoring();
     res.status(500).json({ error: error.message });
   }
 });
@@ -283,7 +317,6 @@ app.post('/api/stop-download', (req, res) => {
     pidToDownloadId = {};
     currentDownloadParams = null;
     processLogs = {};
-    stopSpeedMonitoring();
     res.json({ message: 'Downloads stopped' });
   } catch (error) {
     res.status(500).json({ error: error.message });
