@@ -16,14 +16,14 @@ function App() {
   const [dropboxToken, setDropboxToken] = useState('');
   const [sharedLink, setSharedLink] = useState('');
   const [destinationPath, setDestinationPath] = useState('');
-  const [formattedSpeed, setFormattedSpeed] = useState('0.00 MB/s');
-  const [speedHistory, setSpeedHistory] = useState([]);
+  const [setFormattedSpeed] = useState('0.00 MB/s');
+  const [speedHistory] = useState([]);
   const [concurrentDownloads, setConcurrentDownloads] = useState(2);
-  const [processLogs, setProcessLogs] = useState({});
+  const [setProcessLogs] = useState({});
   const [isConnected, setIsConnected] = useState(false);
   const [downloadTasks, setDownloadTasks] = useState({});
   const [folderSize, setFolderSize] = useState(0);
-const [fileCount, setFileCount] = useState(0);
+  const [fileCount, setFileCount] = useState(0);
   const [loading, setLoading] = useState({
     connection: false,
     download: false,
@@ -50,8 +50,8 @@ const [fileCount, setFileCount] = useState(0);
   };
 
     useEffect(() => {
-let fileCountIntervalId;
     let folderSizeIntervalId;
+    let fileCountIntervalId;
 
     if (Object.keys(downloadTasks).length > 0) {
       // Monitor folder size
@@ -62,7 +62,8 @@ let fileCountIntervalId;
           setFolderSize(formatBytes(size));
         }
       }, 3000);
-fileCountIntervalId = setInterval(async () => {
+
+      fileCountIntervalId = setInterval(async () => {
         const response = await fetch('http://localhost:3001/api/file-count');
         if (response.ok) {
           const { count } = await response.json();
@@ -73,7 +74,7 @@ fileCountIntervalId = setInterval(async () => {
 
     return () => {
       clearInterval(folderSizeIntervalId);
-clearInterval(fileCountIntervalId);
+      clearInterval(fileCountIntervalId);
     };
   }, [downloadTasks]);
 
@@ -156,7 +157,7 @@ clearInterval(fileCountIntervalId);
         setProcessLogs({});
         setFormattedSpeed('0.00 MB/s');
         setFolderSize(0);
-setFileCount(0);
+        setFileCount(0);
       }
     } catch (error) {
       console.error('Error stopping download:', error);
@@ -295,9 +296,9 @@ setFileCount(0);
                 />
               </Box>
               <Typography sx={{ mt: 1 }}>
-<Typography sx={{ mt: 1 }}>Files: {fileCount}</Typography>
                 Folder Size: {folderSize}
               </Typography>
+              <Typography sx={{ mt: 1 }}>Files: {fileCount}</Typography>
             </Box>
             {speedHistory.length > 0 && (
               <Box sx={{ mt: 2, width: '100%', maxWidth: 500 }}>
