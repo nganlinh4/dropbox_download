@@ -1,3 +1,215 @@
-.App {
-  text-align: center;
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+
+:root {
+  /* Light theme */
+  --light-primary-gradient: linear-gradient(135deg, #6e8efb 0%, #4a6cf7 100%);
+  --light-secondary-gradient: linear-gradient(135deg, #ff6b6b 0%, #ee5253 100%);
+  --light-background: #f8f9fa;
+  --light-card-bg: #ffffff;
+  --light-text-primary: #1a1a1a;
+  --light-text-secondary: #6c757d;
+
+  /* Dark theme */
+  --dark-primary-gradient: linear-gradient(135deg, #4a6cf7 0%, #2d3fff 100%);
+  --dark-secondary-gradient: linear-gradient(135deg, #ff6b6b 0%, #ee5253 100%);
+  --dark-background: #0a0a0a;
+  --dark-card-bg: #1a1a1a;
+  --dark-text-primary: #ffffff;
+  --dark-text-secondary: #b3b3b3;
+}
+
+body[data-theme='light'] {
+  --current-background: var(--light-background);
+  --current-card-bg: var(--light-card-bg);
+  --current-text-primary: var(--light-text-primary);
+  --current-text-secondary: var(--light-text-secondary);
+  --current-primary-gradient: var(--light-primary-gradient);
+  --current-secondary-gradient: var(--light-secondary-gradient);
+}
+
+body[data-theme='dark'] {
+  --current-background: var(--dark-background);
+  --current-card-bg: var(--dark-card-bg);
+  --current-text-primary: var(--dark-text-primary);
+  --current-text-secondary: var(--dark-text-secondary);
+  --current-primary-gradient: var(--dark-primary-gradient);
+  --current-secondary-gradient: var(--dark-secondary-gradient);
+}
+
+body {
+  background-color: var(--current-background);
+  color: var(--current-text-primary);
+  font-family: 'Inter', 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.app-container {
+  min-height: 100vh;
+  padding: 2rem 0;
+}
+
+.app-card {
+  background: var(--current-card-bg);
+  border-radius: 24px;
+  padding: 2.5rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.app-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
+}
+
+.gradient-text {
+  background: var(--current-primary-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-weight: bold;
+}
+
+.control-button {
+  border-radius: 16px !important;
+  text-transform: none !important;
+  padding: 12px 32px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.5px !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.control-button:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.control-button.primary {
+  background: var(--current-primary-gradient) !important;
+}
+
+.control-button.error {
+  background: var(--current-secondary-gradient) !important;
+}
+
+.input-field {
+  border-radius: 16px;
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease !important;
+}
+
+.input-field:hover {
+  transform: translateY(-2px);
+}
+
+.progress-card {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(10px);
+  border-radius: 20px;
+  padding: 2rem;
+  margin-top: 2rem;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: all 0.3s ease;
+}
+
+.slider-container {
+  padding: 1.5rem;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 16px;
+  margin: 1.5rem 0;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.status-text {
+  font-size: 1rem;
+  color: var(--current-text-secondary);
+  margin: 0.75rem 0;
+  transition: color 0.3s ease;
+}
+
+.chart-container {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 16px;
+  padding: 1.5rem;
+  margin-top: 2rem;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.toggle-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  gap: 12px;
+  z-index: 1000;
+  background: var(--current-card-bg);
+  padding: 8px 16px;
+  border-radius: 100px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.toggle-button {
+  padding: 8px !important;
+  min-width: unset !important;
+  border-radius: 50% !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.toggle-button:hover {
+  transform: rotate(15deg);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.slide-in {
+  animation: slideIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.scale-in {
+  animation: scaleIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+[data-theme='dark'] .input-field {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+[data-theme='light'] .input-field {
+  background: rgba(0, 0, 0, 0.03);
 }

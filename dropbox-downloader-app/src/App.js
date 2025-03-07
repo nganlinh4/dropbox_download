@@ -1,5 +1,5 @@
 import io from 'socket.io-client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
 import {
   Container,
@@ -9,10 +9,56 @@ import {
   Box,
   Slider,
   CircularProgress,
+  createTheme,
+  ThemeProvider,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
 import { LineChart } from '@mui/x-charts/LineChart';
+import { translations } from './translations';
+import {
+  DarkMode as DarkModeIcon,
+  LightMode as LightModeIcon,
+  Translate as TranslateIcon,
+  CheckCircleOutline as CheckIcon,
+  PauseCircleOutline as PauseIcon,
+  Delete as DeleteIcon,
+  PlayArrow as PlayArrowIcon,
+} from '@mui/icons-material';
+
+const darkTheme = createTheme({
+  palette: {
+    mode: 'dark',
+    background: {
+      default: '#0a0a0a',
+      paper: '#1a1a1a',
+    },
+  },
+});
+
+const lightTheme = createTheme({
+  palette: {
+    mode: 'light',
+    background: {
+      default: '#f8f9fa',
+      paper: '#ffffff',
+    },
+  },
+});
 
 function App() {
+  const [theme, setTheme] = useState(() => {
+    const saved = localStorage.getItem('theme');
+    return saved || 'dark';
+  });
+  
+  const [lang, setLang] = useState(() => {
+    const saved = localStorage.getItem('lang');
+    return saved || 'en';
+  });
+
+  const t = useCallback((key) => translations[lang][key], [lang]);
+
   const [dropboxToken, setDropboxToken] = useState('');
   const [sharedLink, setSharedLink] = useState('');
   const [destinationPath, setDestinationPath] = useState('');
@@ -29,6 +75,50 @@ function App() {
     connection: false,
     download: false,
   });
+
+  useEffect(() => {
+    localStorage.setItem('theme', theme);
+    document.body.setAttribute('data-theme', theme);
+  }, [theme]);
+
+  useEffect(() => {
+    localStorage.setItem('lang', lang);
+  }, [lang]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+  };
+
+  const toggleLang = () => {
+    setLang(prev => prev === 'en' ? 'ko' : 'en');
+  };
+
+  const renderToggles = () => (
+    <div className="toggle-container scale-in">
+      <Tooltip title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}>
+        <IconButton
+          className="toggle-button"
+          onClick={toggleTheme}
+          size="small"
+        >
+          {theme === 'dark' ? (
+            <LightModeIcon fontSize="small" />
+          ) : (
+            <DarkModeIcon fontSize="small" />
+          )}
+        </IconButton>
+      </Tooltip>
+      <Tooltip title={lang === 'en' ? '한국어로 전환' : 'Switch to English'}>
+        <IconButton
+          className="toggle-button"
+          onClick={toggleLang}
+          size="small"
+        >
+          <TranslateIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+    </div>
+  );
 
   const adjustConcurrentDownloads = async (newValue) => {
     if (!Object.keys(downloadTasks).length) return;
@@ -50,12 +140,27 @@ function App() {
     }
   };
 
-    useEffect(() => {
+  useEffect(() => {
+    const savedToken = localStorage.getItem('dropboxToken');
+    const savedLink = localStorage.getItem('sharedLink');
+    const savedPath = localStorage.getItem('destinationPath');
+
+    if (savedToken) setDropboxToken(savedToken);
+    if (savedLink) setSharedLink(savedLink);
+    if (savedPath) setDestinationPath(savedPath);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('dropboxToken', dropboxToken);
+    localStorage.setItem('sharedLink', sharedLink);
+    localStorage.setItem('destinationPath', destinationPath);
+  }, [dropboxToken, sharedLink, destinationPath]);
+
+  useEffect(() => {
     let folderSizeIntervalId;
     let fileCountIntervalId;
 
     if (Object.keys(downloadTasks).length > 0) {
-      // Monitor folder size
       folderSizeIntervalId = setInterval(async () => {
         const response = await fetch('http://localhost:3001/api/folder-size');
         if (response.ok) {
@@ -80,43 +185,26 @@ function App() {
   }, [downloadTasks]);
 
   useEffect(() => {
-    const savedToken = localStorage.getItem('dropboxToken');
-    const savedLink = localStorage.getItem('sharedLink');
-    const savedPath = localStorage.getItem('destinationPath');
+    const socket = io('http://localhost:3001');
+    socket.on('connect', () => {
+      console.log('Connected to backend via Socket.IO');
+    });
 
-    if (savedToken) setDropboxToken(savedToken);
-    if (savedLink) setSharedLink(savedLink);
-    if (savedPath) setDestinationPath(savedPath);
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('dropboxToken', dropboxToken);
-    localStorage.setItem('sharedLink', sharedLink);
-    localStorage.setItem('destinationPath', destinationPath);
-  }, [dropboxToken, sharedLink, destinationPath]);
-
-    useEffect(() => {
-        const socket = io('http://localhost:3001');
-        socket.on('connect', () => {
-          console.log('Connected to backend via Socket.IO');
-        });
-
-      socket.on('log', (logData) => {
-        console.log("Received log data:", logData); // Keep this
-        setProcessLogs((prevLogs) => {
-          
-          const { pid, type, message } = logData;
-          const newLogs = { ...prevLogs };
-          if (!newLogs[pid]) newLogs[pid] = [];
-          newLogs[pid] = [...newLogs[pid], { type, message }];
-          return newLogs;
-        });
+    socket.on('log', (logData) => {
+      console.log("Received log data:", logData);
+      setProcessLogs((prevLogs) => {
+        const { pid, type, message } = logData;
+        const newLogs = { ...prevLogs };
+        if (!newLogs[pid]) newLogs[pid] = [];
+        newLogs[pid] = [...newLogs[pid], { type, message }];
+        return newLogs;
       });
+    });
 
-        return () => {
-            socket.off('log');
-        }
-    }, []);
+    return () => {
+      socket.off('log');
+    }
+  }, []);
 
   const checkConnection = async () => {
     setLoading({ ...loading, connection: true });
@@ -131,8 +219,7 @@ function App() {
       const data = await response.json();
       setIsConnected(data.connected);
       if (!data.connected) {
-          alert('Failed to connect to Dropbox. Check your token.');
-          setIsConnected(false);
+        alert('Failed to connect to Dropbox. Check your token.');
       }
     } catch (error) {
       console.error('Error checking connection:', error);
@@ -224,129 +311,152 @@ function App() {
   };
 
   return (
-    <Container maxWidth="md">
-      <Box sx={{ my: 4 }}>
-        <Typography variant="h4" component="h1" gutterBottom>
-          Dropbox Downloader
-        </Typography>
-
-        <TextField
-          label="Dropbox Access Token"
-          fullWidth
-          margin="normal"
-          value={dropboxToken}
-          onChange={(e) => setDropboxToken(e.target.value)}
-        />
-
-        <TextField
-          label="Shared Link"
-          fullWidth
-          margin="normal"
-          value={sharedLink}
-          onChange={(e) => setSharedLink(e.target.value)}
-        />
-
-        <TextField
-          label="Destination Path"
-          fullWidth
-          margin="normal"
-          value={destinationPath}
-          onChange={(e) => setDestinationPath(e.target.value)}
-        />
-
-        <Box sx={{ mt: 2, mb: 2, display: 'flex', gap: 2 }}>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={checkConnection}
-            disabled={loading.connection}
-          >
-            {loading.connection ? <CircularProgress size={24} /> : 'Check Connection'}
-          </Button>
-
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={startDownload}
-            disabled={loading.download || (Object.keys(downloadTasks).length > 0 && !isPaused)}
-          >
-            {loading.download ? <CircularProgress size={24} /> : 'Start Download'}
-          </Button>
-
-          {Object.keys(downloadTasks).length > 0 && !loading.download && (
-            <>
-              <Button 
-                variant="contained" 
-                color="error" 
-                onClick={pauseDownload}
-                disabled={isPaused}
-              >
-                Pause
-              </Button>
-              <Button variant="contained" color="secondary" onClick={clearDestination}>
-                {isPaused ? 'Clear Destination' : 'Clear Previous Files'}
-              </Button>
-            </>
-          )}
-        </Box>
-
-        {isConnected && (
-          <Typography variant="body1" color="success.main" sx={{ mb: 2 }}>
-            Connected to Dropbox!
+    <ThemeProvider theme={theme === 'dark' ? darkTheme : lightTheme}>
+      <Container maxWidth="md" className="app-container">
+        {renderToggles()}
+        <Box className="app-card fade-in">
+          <Typography variant="h4" component="h1" gutterBottom className="gradient-text">
+            {t('title')}
           </Typography>
-        )}
 
-        {Object.keys(downloadTasks).length > 0 && (
           <Box sx={{ mt: 4 }}>
-            <Typography variant='h6' gutterBottom>
-              Download Progress
-            </Typography>
-            <Box sx={{ width: '100%', bgcolor: 'background.paper', p: 2, borderRadius: 1, mb: 2 }}>
-              <Typography sx={{ mt: 2 }}>
-                {isPaused ? 'Download Paused' : 'Download in Progress'}
-                {isPaused && ' - Click Start Download to resume'}
-              </Typography>
-              <Box sx={{ mt: 2, mb: 2, width: '100%', maxWidth: 500 }}>
-                <Typography gutterBottom>
-                  Concurrent Downloads: {concurrentDownloads}
-                </Typography>
-                <Slider
-                  value={concurrentDownloads}
-                  min={2}
-                  max={100}
-                  onChange={(_, value) => setConcurrentDownloads(value)}
-                  onChangeCommitted={(_, value) => adjustConcurrentDownloads(value)}
-                  valueLabelDisplay="auto"
-                  marks={[
-                    { value: 2, label: '2' },
-                    { value: 100, label: '100' }
-                  ]}
-                />
-              </Box>
-              <Typography sx={{ mt: 1 }}>
-                Folder Size: {folderSize}
-              </Typography>
-              <Typography sx={{ mt: 1 }}>Files: {fileCount}</Typography>
-            </Box>
-            {speedHistory.length > 0 && (
-              <Box sx={{ mt: 2, width: '100%', maxWidth: 500 }}>
-                <LineChart
-                  xAxis={[{ data: Array.from({length: speedHistory.length}, (_, i) => i + 1).slice(-60), label: 'Time (s)' }]}
-                  series={[
-                    {
-                      data: speedHistory.slice(-60),
-                      label: 'Download Speed (MB/s)',
-                    },
-                  ]}
-                  yAxis={[{ label: 'MB/s' }]}
-                  height={200}
-                />
-              </Box>
+            <TextField
+              label={t('dropboxToken')}
+              fullWidth
+              margin="normal"
+              value={dropboxToken}
+              onChange={(e) => setDropboxToken(e.target.value)}
+              className="input-field slide-in"
+            />
+
+            <TextField
+              label={t('sharedLink')}
+              fullWidth
+              margin="normal"
+              value={sharedLink}
+              onChange={(e) => setSharedLink(e.target.value)}
+              className="input-field slide-in"
+            />
+
+            <TextField
+              label={t('destinationPath')}
+              fullWidth
+              margin="normal"
+              value={destinationPath}
+              onChange={(e) => setDestinationPath(e.target.value)}
+              className="input-field slide-in"
+            />
+          </Box>
+
+          <Box sx={{ mt: 4, mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }} className="scale-in">
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={checkConnection}
+              disabled={loading.connection}
+              className="control-button primary"
+              startIcon={<CheckIcon />}
+            >
+              {loading.connection ? <CircularProgress size={24} /> : t('checkConnection')}
+            </Button>
+
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={startDownload}
+              disabled={loading.download || (Object.keys(downloadTasks).length > 0 && !isPaused)}
+              className="control-button primary"
+              startIcon={<PlayArrowIcon />}
+            >
+              {loading.download ? <CircularProgress size={24} /> : t('startDownload')}
+            </Button>
+
+            {Object.keys(downloadTasks).length > 0 && !loading.download && (
+              <>
+                <Button 
+                  variant="contained" 
+                  color="error" 
+                  onClick={pauseDownload}
+                  disabled={isPaused}
+                  className="control-button error"
+                  startIcon={<PauseIcon />}
+                >
+                  {t('pause')}
+                </Button>
+                <Button 
+                  variant="contained" 
+                  color="secondary" 
+                  onClick={clearDestination}
+                  className="control-button"
+                  startIcon={<DeleteIcon />}
+                >
+                  {isPaused ? t('clearDestination') : t('clearPrevious')}
+                </Button>
+              </>
             )}
           </Box>
-        )}
-      </Box>
-    </Container>
+
+          {isConnected && (
+            <Typography variant="body1" color="success.main" sx={{ mb: 2 }} className="fade-in">
+              {t('connected')}
+            </Typography>
+          )}
+
+          {Object.keys(downloadTasks).length > 0 && (
+            <Box className="progress-card fade-in">
+              <Typography variant='h6' gutterBottom className="gradient-text">
+                {t('downloadProgress')}
+              </Typography>
+              <Box className="fade-in">
+                <Typography className="status-text">
+                  {isPaused ? `⏸ ${t('downloadPaused')}` : `▶️ ${t('downloadInProgress')}`}
+                  {isPaused && ` - ${t('clickToResume')}`}
+                </Typography>
+                <Box className="slider-container">
+                  <Typography gutterBottom>
+                    {t('concurrentDownloads')}: {concurrentDownloads}
+                  </Typography>
+                  <Slider
+                    value={concurrentDownloads}
+                    min={2}
+                    max={100}
+                    onChange={(_, value) => setConcurrentDownloads(value)}
+                    onChangeCommitted={(_, value) => adjustConcurrentDownloads(value)}
+                    valueLabelDisplay="auto"
+                    marks={[
+                      { value: 2, label: '2' },
+                      { value: 100, label: '100' }
+                    ]}
+                  />
+                </Box>
+                <Typography className="status-text">
+                  📁 {t('folderSize')}: {folderSize}
+                </Typography>
+                <Typography className="status-text">
+                  📄 {t('files')}: {fileCount}
+                </Typography>
+              </Box>
+              {speedHistory.length > 0 && (
+                <Box className="chart-container fade-in">
+                  <LineChart
+                    xAxis={[{ data: Array.from({length: speedHistory.length}, (_, i) => i + 1).slice(-60), label: t('time') }]}
+                    series={[
+                      {
+                        data: speedHistory.slice(-60),
+                        label: t('downloadSpeed'),
+                      },
+                    ]}
+                    yAxis={[{ label: 'MB/s', min: 0 }]}
+                    height={200}
+                    margin={{ left: 70 }}
+                  />
+                </Box>
+              )}
+            </Box>
+          )}
+        </Box>
+      </Container>
+    </ThemeProvider>
   );
 }
 
