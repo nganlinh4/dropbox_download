@@ -2,6 +2,7 @@ import dropbox
 import os
 import sys
 import time
+import random
 from dropbox.files import FolderMetadata, FileMetadata
 
 def write_progress(total_files, downloaded_files, script_name):
@@ -21,8 +22,8 @@ def should_download_file(local_file_path, dropbox_file):
 
     return local_size != dropbox_size
 
-def download_shared_folder(dbx, shared_link_url, local_path, folder_path="", total_files=0, downloaded_files=0, script_name="download_dropbox"):
-    """Download all contents from a Dropbox shared folder"""
+def download_shared_folder(dbx, shared_link_url, local_path, folder_path="", total_files=0, downloaded_files=0, script_name="download_dropbox_random"):
+    """Download all contents from a Dropbox shared folder in random order."""
     try:
         os.makedirs(local_path, exist_ok=True)
 
@@ -36,12 +37,13 @@ def download_shared_folder(dbx, shared_link_url, local_path, folder_path="", tot
             shared_link=dropbox.files.SharedLink(url=shared_link_url)
         )
 
-        total_files += len(result.entries) # Increment total files count
+        entries = result.entries
+        total_files += len(entries)
         write_progress(total_files, downloaded_files, script_name)
 
-
         while True:
-            for entry in result.entries:
+            random.shuffle(entries) # Shuffle entries for random download order
+            for entry in entries:
                 if isinstance(entry, FolderMetadata):
                     # Handle folders
                     folder_name = entry.name
@@ -53,7 +55,6 @@ def download_shared_folder(dbx, shared_link_url, local_path, folder_path="", tot
 
                     # Recursively download contents of the folder
                     total_files, downloaded_files = download_shared_folder(dbx, shared_link_url, local_folder_path, subfolder_path, total_files, downloaded_files, script_name)
-
 
                 elif isinstance(entry, FileMetadata):
                     # Handle files
@@ -74,7 +75,7 @@ def download_shared_folder(dbx, shared_link_url, local_path, folder_path="", tot
                             with open(local_file_path, "wb") as f:
                                 f.write(response.content)
                             downloaded_files += 1
-                            write_progress(total_files, downloaded_files, script_name) #update progress after each file
+                            write_progress(total_files, downloaded_files, script_name)
                         except Exception as e:
                             print(f"Error downloading {file_name}: {e}")
                     else:
@@ -85,16 +86,18 @@ def download_shared_folder(dbx, shared_link_url, local_path, folder_path="", tot
             if not result.has_more:
                 break
             result = dbx.files_list_folder_continue(result.cursor)
-            total_files += len(result.entries)
+            entries.extend(result.entries) # Add new entries to the existing list
+            total_files = len(entries)
             write_progress(total_files, downloaded_files, script_name)
 
+
     except dropbox.exceptions.ApiError as e:
-      print(f"API Error: {e.user_message_text}")
+        print(f"API Error: {e.user_message_text}")
     except Exception as e:
-      import traceback
-      print(f"General Error: {e}\n{traceback.format_exc()}")
+        import traceback
+        print(f"General Error: {e}\n{traceback.format_exc()}")
     finally:
-      print("Finished processing folder.")
+        print("Finished processing folder.")
     return total_files, downloaded_files
 
 def initialize_dropbox_client(access_token):
@@ -102,9 +105,8 @@ def initialize_dropbox_client(access_token):
     return dropbox.Dropbox(oauth2_access_token=access_token)
 
 if __name__ == "__main__":
-    # This part will be used when called from the Node.js backend
     if len(sys.argv) != 5:
-        print("Usage: python download_dropbox.py <dropbox_token> <shared_link> <destination_path> <script_name>")
+        print("Usage: python download_dropbox_random.py <dropbox_token> <shared_link> <destination_path> <script_name>")
         sys.exit(1)
 
     dropbox_token = sys.argv[1]

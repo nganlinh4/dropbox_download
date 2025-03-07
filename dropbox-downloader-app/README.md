@@ -1,70 +1,70 @@
-# Getting Started with Create React App
+# Dropbox Downloader App
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+This application allows you to download files and folders from a shared Dropbox link.
 
-## Available Scripts
+## Prerequisites
 
-In the project directory, you can run:
+- Node.js and npm installed on your system.
+- A Dropbox access token with the necessary permissions to access the shared link.
 
-### `npm start`
+## Installation
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+1.  Clone the repository:
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+    ```bash
+    git clone <repository_url>
+    cd dropbox-downloader-app
+    ```
 
-### `npm test`
+2.  Install backend dependencies:
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+    ```bash
+    cd backend
+    npm install
+    cd ..
+    ```
+3.  Install frontend dependencies:
+    ```bash
+    npm install
+    ```
 
-### `npm run build`
+## Running with Virtual Environment
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+1.  Create a virtual environment in the `backend` directory:
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+    ```bash
+    cd backend
+    python3 -m venv venv
+    ```
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+2.  Activate the virtual environment:
 
-### `npm run eject`
+    ```bash
+    source venv/bin/activate
+    ```
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+3.  Install the required Python packages (do this every time you activate a fresh virtual environment):
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+    ```bash
+    pip install dropbox
+    ```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+4.  Now you can run the backend server as described in the 'Running the App' section, and it will use the packages installed in the virtual environment.
+## Running the App
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+1.  **Start the backend server:**
 
-## Learn More
+    ```bash
+    cd dropbox-downloader-app/backend && source venv/bin/activate && npm run dev
+    ```
+   This will start the backend server, typically on port 3001.
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+2.  **Start the frontend development server:**
+    In a separate terminal window, navigate to the project's root directory (`dropbox-downloader-app`) and run:
+    ```bash    
+    cd dropbox-downloader-app && npm start
+    ```
+    This will start the frontend development server and open the app in your default browser, usually at `http://localhost:3000`. If port 3000 is in use, it will choose another port.
 
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+## Configuration
+You will need a Dropbox access token. You can create one in the Dropbox App Console. Provide this token to the application in the appropriate input field.

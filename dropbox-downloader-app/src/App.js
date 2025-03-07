@@ -1,3 +1,4 @@
+import io from 'socket.io-client';
 import React, { useState, useEffect } from 'react';
 import './App.css';
 import {
@@ -5,11 +6,8 @@ import {
   TextField,
   Button,
   Typography,
-  List,
-  ListItem,
-  ListItemText,
-  LinearProgress,
   Box,
+  Slider,
   CircularProgress,
 } from '@mui/material';
 
@@ -17,67 +15,76 @@ function App() {
   const [dropboxToken, setDropboxToken] = useState('');
   const [sharedLink, setSharedLink] = useState('');
   const [destinationPath, setDestinationPath] = useState('');
+  const [concurrentDownloads, setConcurrentDownloads] = useState(2);
+  const [formattedSpeed, setFormattedSpeed] = useState('0.00 MB per 5s');
   const [isConnected, setIsConnected] = useState(false);
-  const [files, setFiles] = useState([]);
-  const [downloadStatus, setDownloadStatus] = useState('');
-  const [downloadProgress, setDownloadProgress] = useState({
-    totalFiles: 0,
-    downloadedFiles: 0,
-    currentFile: '',
-    error: '',
-  });
+  const [downloadTasks, setDownloadTasks] = useState({});
   const [loading, setLoading] = useState({
     connection: false,
-    listFiles: false,
     download: false,
   });
 
+  const adjustConcurrentDownloads = async (newValue) => {
+    if (!Object.keys(downloadTasks).length) return;
+    
+    try {
+      const response = await fetch('http://localhost:3001/api/adjust-concurrent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ count: newValue })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to adjust concurrent downloads');
+      }
+    } catch (error) {
+      console.error('Error adjusting concurrent downloads:', error);
+    }
+  };
+
+  // Monitor download speed
   useEffect(() => {
     let intervalId;
-
-    if (downloadStatus === 'Download started') {
+    if (Object.keys(downloadTasks).length > 0) {
       intervalId = setInterval(async () => {
-        try {
-          const response = await fetch('http://localhost:3001/api/progress');
+        const response = await fetch('http://localhost:3001/api/download-speed');
+        if (response.ok) {
           const data = await response.json();
-          setDownloadProgress(data);
-
-          if (data.error) {
-            setDownloadStatus(`Error: ${data.error}`);
-            clearInterval(intervalId);
-          } else if (
-            data.downloadedFiles === data.totalFiles &&
-            data.totalFiles > 0
-          ) {
-            setDownloadStatus('Download complete!');
-            clearInterval(intervalId);
-          }
-        } catch (error) {
-          console.error('Error fetching progress:', error);
-          setDownloadStatus(
-            'Error fetching progress. See console for details.'
-          );
-          clearInterval(intervalId);
+          setFormattedSpeed(`${data.formatted} MB per 5s`);
         }
-      }, 1000); // Check progress every second
+      }, 5000) // Check every 5 seconds; // Update more frequently
     }
+    return () => clearInterval(intervalId);
+  }, [downloadTasks]);
 
-    return () => clearInterval(intervalId); // Cleanup on unmount or status change
-  }, [downloadStatus]);
+  useEffect(() => {
+    const savedToken = localStorage.getItem('dropboxToken');
+    const savedLink = localStorage.getItem('sharedLink');
+    const savedPath = localStorage.getItem('destinationPath');
+
+    if (savedToken) setDropboxToken(savedToken);
+    if (savedLink) setSharedLink(savedLink);
+    if (savedPath) setDestinationPath(savedPath);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('dropboxToken', dropboxToken);
+    localStorage.setItem('sharedLink', sharedLink);
+    localStorage.setItem('destinationPath', destinationPath);
+  }, [dropboxToken, sharedLink, destinationPath]);
 
   const checkConnection = async () => {
     setLoading({ ...loading, connection: true });
     try {
-      const response = await fetch(
-        'http://localhost:3001/api/check-connection',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ dropboxToken }),
-        }
-      );
+      const response = await fetch('http://localhost:3001/api/check-connection', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ dropboxToken }),
+      });
       const data = await response.json();
       setIsConnected(data.connected);
       if (data.connected) {
@@ -94,30 +101,22 @@ function App() {
     }
   };
 
-  const listFiles = async () => {
-    setLoading({ ...loading, listFiles: true });
+  const stopDownload = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/list-files', {
+      const response = await fetch('http://localhost:3001/api/stop-download', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ dropboxToken, sharedLink }),
+        }
       });
-      const data = await response.json();
-
+      
       if (response.ok) {
-        setFiles(data.entries);
-      } else {
-        setFiles([]);
-        alert(data.error || 'Failed to list files.');
+        setDownloadTasks({});
+        setFormattedSpeed('0.00 KB per 5s');
       }
     } catch (error) {
-      console.error('Error listing files:', error);
-      setFiles([]);
-      alert('Error listing files. See console for details.');
-    } finally {
-      setLoading({ ...loading, listFiles: false });
+      console.error('Error stopping download:', error);
+      alert('Error stopping download. See console for details.');
     }
   };
 
@@ -132,10 +131,21 @@ function App() {
         body: JSON.stringify({ dropboxToken, sharedLink, destinationPath }),
       });
       const data = await response.json();
-      setDownloadStatus(data.message);
+
+      if (response.ok) {
+        setDownloadTasks((prevTasks) => ({
+          ...prevTasks,
+          [data.downloadId]: {
+            sharedLink,
+            destinationPath,
+          },
+        }));
+      } else {
+        alert(`Error: ${data.error}`);
+      }
     } catch (error) {
       console.error('Error starting download:', error);
-      setDownloadStatus('Error starting download. See console for details.');
+      alert('Error starting download. See console for details.');
     } finally {
       setLoading({ ...loading, download: false });
     }
@@ -172,89 +182,64 @@ function App() {
           onChange={(e) => setDestinationPath(e.target.value)}
         />
 
-        <Button
-          variant="contained"
-          color="primary"
-          onClick={checkConnection}
-          disabled={loading.connection}
-          sx={{ mr: 2 }}
-        >
-          {loading.connection ? (
-            <CircularProgress size={24} />
-          ) : (
-            'Check Dropbox Connection'
+        <Box sx={{ mt: 2, mb: 2, display: 'flex', gap: 2 }}>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={checkConnection}
+            disabled={loading.connection}
+          >
+            {loading.connection ? <CircularProgress size={24} /> : 'Check Connection'}
+          </Button>
+
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={startDownload}
+            disabled={loading.download || Object.keys(downloadTasks).length > 0}
+          >
+            {loading.download ? <CircularProgress size={24} /> : 'Start Download'}
+          </Button>
+
+          {Object.keys(downloadTasks).length > 0 && (
+            <Button variant="contained" color="error" onClick={stopDownload}>
+              Stop Download
+            </Button>
           )}
-        </Button>
+        </Box>
+
         {isConnected && (
-          <Typography variant="body1" color="success">
+          <Typography variant="body1" color="success.main" sx={{ mb: 2 }}>
             Connected to Dropbox!
           </Typography>
         )}
 
-        <Button
-          variant="contained"
-          color="primary"
-          onClick={listFiles}
-          disabled={loading.listFiles}
-          sx={{ mr: 2 }}
-        >
-          {loading.listFiles ? <CircularProgress size={24} /> : 'List Files'}
-        </Button>
-
-        <Button
-          variant="contained"
-          color="primary"
-          onClick={startDownload}
-          disabled={loading.download}
-        >
-          {loading.download ? <CircularProgress size={24} /> : 'Start Download'}
-        </Button>
-
-        {files.length > 0 && (
-          <Box sx={{ mt: 4 }}>
-            <Typography variant="h6" component="h2" gutterBottom>
-              Files:
-            </Typography>
-            <List>
-              {files.map((file, index) => (
-                <ListItem key={index}>
-                  <ListItemText
-                    primary={`${file.name} (${file.type})`}
-                    secondary={file.size && `${file.size} bytes`}
-                  />
-                </ListItem>
-              ))}
-            </List>
-          </Box>
-        )}
-
-        {downloadStatus && (
-          <Box sx={{ mt: 4 }}>
-            <Typography variant="body1">Status: {downloadStatus}</Typography>
-            {downloadProgress.totalFiles > 0 && (
-              <Box sx={{ mt: 1 }}>
-                <LinearProgress
-                  variant="determinate"
-                  value={
-                    (downloadProgress.downloadedFiles /
-                      downloadProgress.totalFiles) *
-                    100
-                  }
-                />
-                <Typography variant="body2">
-                  Progress: {downloadProgress.downloadedFiles} /{' '}
-                  {downloadProgress.totalFiles}
-                  {downloadProgress.currentFile &&
-                    ` - Downloading: ${downloadProgress.currentFile}`}
-                </Typography>
-              </Box>
-            )}
-            {downloadProgress.error && (
-              <Typography variant="body2" color="error">
-                Error: {downloadProgress.error}
+        {Object.keys(downloadTasks).length > 0 && (
+          <>
+            <Typography sx={{ mt: 2 }}>Download Started</Typography>
+            <Box sx={{ mt: 2, mb: 2, width: '100%', maxWidth: 500 }}>
+              <Typography gutterBottom>
+                Concurrent Downloads: {concurrentDownloads}
               </Typography>
-            )}
-          </Box>
+              <Slider
+                value={concurrentDownloads}
+                min={2}
+                max={30}
+                onChange={(_, value) => setConcurrentDownloads(value)}
+                onChangeCommitted={(_, value) => adjustConcurrentDownloads(value)}
+                valueLabelDisplay="auto"
+                marks={[
+                  { value: 2, label: '2' },
+                  { value: 30, label: '30' }
+                ]}
+              />
+            </Box>
+            <Box sx={{ mt: 2 }}>
+              <Typography>
+                Download Speed: {formattedSpeed}
+              </Typography>
+            </Box>
+          </>
         )}
       </Box>
     </Container>
