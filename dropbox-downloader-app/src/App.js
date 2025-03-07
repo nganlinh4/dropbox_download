@@ -16,6 +16,7 @@ function App() {
   const [dropboxToken, setDropboxToken] = useState('');
   const [sharedLink, setSharedLink] = useState('');
   const [destinationPath, setDestinationPath] = useState('');
+  const [isPaused, setIsPaused] = useState(false);
   const [formattedSpeed, setFormattedSpeed] = useState('0.00 MB/s');
   const [speedHistory, setSpeedHistory] = useState([]);
   const [concurrentDownloads, setConcurrentDownloads] = useState(2);
@@ -142,7 +143,7 @@ function App() {
     }
   };
 
-  const stopDownload = async () => {
+  const pauseDownload = async () => {
     try {
       const response = await fetch('http://localhost:3001/api/stop-download', {
         method: 'POST',
@@ -152,19 +153,16 @@ function App() {
       });
 
       if (response.ok) {
-        setDownloadTasks({});
-        setProcessLogs({});
-        setFormattedSpeed('0.00 MB/s');
-        setFolderSize(0);
-        setFileCount(0);
+        setIsPaused(true);
       }
     } catch (error) {
-      console.error('Error stopping download:', error);
-      alert('Error stopping download. See console for details.');
+      console.error('Error pausing download:', error);
+      alert('Error pausing download. See console for details.');
     }
   };
 
   const startDownload = async () => {
+    setIsPaused(false);
     setLoading({ ...loading, download: true });
     try {
       const response = await fetch('http://localhost:3001/api/download', {
@@ -270,18 +268,23 @@ function App() {
             variant="contained"
             color="primary"
             onClick={startDownload}
-            disabled={loading.download || Object.keys(downloadTasks).length > 0}
+            disabled={loading.download || (Object.keys(downloadTasks).length > 0 && !isPaused)}
           >
             {loading.download ? <CircularProgress size={24} /> : 'Start Download'}
           </Button>
 
-          {Object.keys(downloadTasks).length > 0 && (
+          {Object.keys(downloadTasks).length > 0 && !loading.download && (
             <>
-              <Button variant="contained" color="error" onClick={stopDownload}>
-                Stop Download
+              <Button 
+                variant="contained" 
+                color="error" 
+                onClick={pauseDownload}
+                disabled={isPaused}
+              >
+                Pause
               </Button>
               <Button variant="contained" color="secondary" onClick={clearDestination}>
-                Clear Destination
+                {isPaused ? 'Clear Destination' : 'Clear Previous Files'}
               </Button>
             </>
           )}
@@ -299,7 +302,10 @@ function App() {
               Download Progress
             </Typography>
             <Box sx={{ width: '100%', bgcolor: 'background.paper', p: 2, borderRadius: 1, mb: 2 }}>
-              <Typography sx={{ mt: 2 }}>Download Started</Typography>
+              <Typography sx={{ mt: 2 }}>
+                {isPaused ? 'Download Paused' : 'Download in Progress'}
+                {isPaused && ' - Click Start Download to resume'}
+              </Typography>
               <Box sx={{ mt: 2, mb: 2, width: '100%', maxWidth: 500 }}>
                 <Typography gutterBottom>
                   Concurrent Downloads: {concurrentDownloads}
