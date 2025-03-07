@@ -10,13 +10,16 @@ import {
   Slider,
   CircularProgress,
 } from '@mui/material';
+import { LineChart } from '@mui/x-charts/LineChart';
 
 function App() {
   const [dropboxToken, setDropboxToken] = useState('');
   const [sharedLink, setSharedLink] = useState('');
   const [destinationPath, setDestinationPath] = useState('');
+  const [formattedSpeed, setFormattedSpeed] = useState('0.00 MB/s');
+  const [speedHistory, setSpeedHistory] = useState([]);
   const [concurrentDownloads, setConcurrentDownloads] = useState(2);
-  const [formattedSpeed, setFormattedSpeed] = useState('0.00 MB per 5s');
+  const [processLogs, setProcessLogs] = useState({});
   const [isConnected, setIsConnected] = useState(false);
   const [downloadTasks, setDownloadTasks] = useState({});
   const [loading, setLoading] = useState({
@@ -26,7 +29,7 @@ function App() {
 
   const adjustConcurrentDownloads = async (newValue) => {
     if (!Object.keys(downloadTasks).length) return;
-    
+
     try {
       const response = await fetch('http://localhost:3001/api/adjust-concurrent', {
         method: 'POST',
@@ -35,7 +38,7 @@ function App() {
         },
         body: JSON.stringify({ count: newValue })
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to adjust concurrent downloads');
       }
@@ -51,10 +54,11 @@ function App() {
       intervalId = setInterval(async () => {
         const response = await fetch('http://localhost:3001/api/download-speed');
         if (response.ok) {
-          const data = await response.json();
-          setFormattedSpeed(`${data.formatted} MB per 5s`);
+          const { formatted, average, history } = await response.json();
+          setFormattedSpeed(`${average} MB/s`);
+          setSpeedHistory(history);
         }
-      }, 5000) // Check every 5 seconds; // Update more frequently
+      }, 1000);
     }
     return () => clearInterval(intervalId);
   }, [downloadTasks]);
@@ -74,6 +78,29 @@ function App() {
     localStorage.setItem('sharedLink', sharedLink);
     localStorage.setItem('destinationPath', destinationPath);
   }, [dropboxToken, sharedLink, destinationPath]);
+
+    useEffect(() => {
+        const socket = io('http://localhost:3001');
+        socket.on('connect', () => {
+          console.log('Connected to backend via Socket.IO');
+        });
+
+      socket.on('log', (logData) => {
+        console.log("Received log data:", logData); // Keep this
+        setProcessLogs((prevLogs) => {
+          
+          const { pid, type, message } = logData;
+          const newLogs = { ...prevLogs };
+          if (!newLogs[pid]) newLogs[pid] = [];
+          newLogs[pid] = [...newLogs[pid], { type, message }];
+          return newLogs;
+        });
+      });
+
+        return () => {
+            socket.off('log');
+        }
+    }, []);
 
   const checkConnection = async () => {
     setLoading({ ...loading, connection: true });
@@ -109,10 +136,11 @@ function App() {
           'Content-Type': 'application/json',
         }
       });
-      
+
       if (response.ok) {
         setDownloadTasks({});
-        setFormattedSpeed('0.00 KB per 5s');
+        setProcessLogs({});
+        setFormattedSpeed('0.00 MB/s');
       }
     } catch (error) {
       console.error('Error stopping download:', error);
@@ -215,31 +243,68 @@ function App() {
         )}
 
         {Object.keys(downloadTasks).length > 0 && (
-          <>
-            <Typography sx={{ mt: 2 }}>Download Started</Typography>
-            <Box sx={{ mt: 2, mb: 2, width: '100%', maxWidth: 500 }}>
-              <Typography gutterBottom>
-                Concurrent Downloads: {concurrentDownloads}
-              </Typography>
-              <Slider
-                value={concurrentDownloads}
-                min={2}
-                max={30}
-                onChange={(_, value) => setConcurrentDownloads(value)}
-                onChangeCommitted={(_, value) => adjustConcurrentDownloads(value)}
-                valueLabelDisplay="auto"
-                marks={[
-                  { value: 2, label: '2' },
-                  { value: 30, label: '30' }
-                ]}
-              />
+          <Box sx={{ mt: 4 }}>
+            <Typography variant='h6' gutterBottom>
+              Download Progress
+            </Typography>
+            <Box sx={{ width: '100%', bgcolor: 'background.paper', p: 2, borderRadius: 1 }}>
+              <Typography sx={{ mt: 2 }}>Download Started</Typography>
+              <Box sx={{ mt: 2, mb: 2, width: '100%', maxWidth: 500 }}>
+                <Typography gutterBottom>
+                  Concurrent Downloads: {concurrentDownloads}
+                </Typography>
+                <Slider
+                  value={concurrentDownloads}
+                  min={2}
+                  max={30}
+                  onChange={(_, value) => setConcurrentDownloads(value)}
+                  onChangeCommitted={(_, value) => adjustConcurrentDownloads(value)}
+                  valueLabelDisplay="auto"
+                  marks={[
+                    { value: 2, label: '2' },
+                    { value: 30, label: '30' }
+                  ]}
+                />
+              </Box>
+              <Box sx={{ mt: 2 }}>
+                <Typography>
+                  Download Speed: {formattedSpeed}
+                </Typography>
+              </Box>
             </Box>
-            <Box sx={{ mt: 2 }}>
-              <Typography>
-                Download Speed: {formattedSpeed}
-              </Typography>
-            </Box>
-          </>
+            {speedHistory.length > 0 && (
+              <Box sx={{ mt: 2, width: '100%', maxWidth: 500 }}>
+                <LineChart
+                  xAxis={[{ data: Array.from({length: speedHistory.length}, (_, i) => i + 1).slice(-60), label: 'Time (s)' }]}
+                  series={[
+                    {
+                      data: speedHistory.slice(-60),
+                      label: 'Download Speed (MB/s)',
+                    },
+                  ]}
+                  yAxis={[{ label: 'MB/s' }]}
+                  height={200}
+                />
+              </Box>
+            )}
+            {Object.keys(processLogs).length > 0 && (
+              <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+                {console.log("Current processLogs:", processLogs)}
+                {Object.entries(processLogs).map(([pid, logs]) => (
+                  <Box key={pid} sx={{ width: '48%', border: '1px solid grey', p: 1, maxHeight: '150px', overflowY: 'scroll' }}>
+                    <Typography variant="subtitle2" component="div">
+                      <strong>Process {pid}</strong>
+                    </Typography>
+                    {logs.map((log, index) => (
+                      <div key={index} style={{ color: log.type === 'stderr' ? 'red' : 'black', whiteSpace: 'pre-wrap'  }}>
+                        {log.message}
+                      </div>
+                    ))}
+                  </Box>
+                ))}
+              </Box>
+            )}
+          </Box>
         )}
       </Box>
     </Container>

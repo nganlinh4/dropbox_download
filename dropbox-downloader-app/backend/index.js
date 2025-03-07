@@ -25,15 +25,13 @@ const io = new Server(server, {
 app.use(cors({ origin: 'http://localhost:3000' }));
 app.use(express.json());
 
-// Store download progress
-let downloadProgressMap = {}; // Map of downloadId to progress
-let pidToDownloadId = {}; // Map of process PID to download ID
 let currentDownloadParams = null; // Store current download parameters
 
-// Download speed monitoring
+// Speed monitoring
 let speedMonitorInterval = null;
 let lastFolderSize = 0;
-let currentTransferRate = 0;
+let currentTransferRate = 0; // Bytes per 5 seconds
+const speeds = []; // Keep a history of speeds
 
 function getFolderSize(dirPath) {
   let totalSize = 0;
@@ -43,7 +41,7 @@ function getFolderSize(dirPath) {
       const filePath = path.join(dirPath, file);
       const stats = fs.statSync(filePath);
       if (stats.isDirectory()) {
-        totalSize += getFolderSize(filePath);
+        totalSize += getFolderSize(filePath); // Recursive call for subdirectories
       } else {
         totalSize += stats.size;
       }
@@ -56,25 +54,31 @@ function getFolderSize(dirPath) {
 
 function calculateTransferRate() {
   if (!currentDownloadParams) return;
-  
+
   const currentSize = getFolderSize(currentDownloadParams.destinationPath);
-  const transferredBytes = currentSize - lastFolderSize;
-  currentTransferRate = transferredBytes;
-  
+  const transferredBytes = Math.max(0, currentSize - lastFolderSize); // Ensure non-negative
+  const mbTransferred = transferredBytes / (1024 * 1024);
+
+  currentTransferRate = transferredBytes; // Store bytes transferred
+  speeds.push(mbTransferred * 1000 / 5000); // Store MB/s
+    if(speeds.length > 60) {
+        speeds.shift();
+    }
+
+  console.log(`Folder size changed by: ${transferredBytes} bytes`);
+  console.log(`Transfer rate: ${mbTransferred.toFixed(2)} MB per 5s`);
+
   lastFolderSize = currentSize;
-  
-  if (transferredBytes > 0) {
-    const mbTransferred = transferredBytes / (1024 * 1024);
-    console.log(`Folder size changed by: ${transferredBytes} bytes in 5s`);
-    console.log(`Transfer rate: ${mbTransferred.toFixed(2)} MB per 5s`);
-  }
 }
 
 function startSpeedMonitoring() {
   console.log('Starting speed monitoring');
   stopSpeedMonitoring();
-  lastFolderSize = getFolderSize(currentDownloadParams.destinationPath);
+  if (currentDownloadParams) {
+    lastFolderSize = getFolderSize(currentDownloadParams.destinationPath);
+  }
   currentTransferRate = 0;
+  speeds.length = 0;
   speedMonitorInterval = setInterval(calculateTransferRate, 5000);
 }
 
@@ -86,13 +90,25 @@ function stopSpeedMonitoring() {
   }
   lastFolderSize = 0;
   currentTransferRate = 0;
+  speeds.length = 0;
 }
 
+// Endpoint to get current download speed
 app.get('/api/download-speed', (req, res) => {
+    calculateTransferRate();
   const mbPer5Sec = currentTransferRate / (1024 * 1024);
-  res.json({ 
+
+    let averageSpeed = 0;
+    if (speeds.length > 0) {
+        const sum = speeds.reduce((acc, val) => acc + val, 0);
+        averageSpeed = sum / speeds.length; // Average in MB/s
+    }
+
+  res.json({
     speed: currentTransferRate,
-    formatted: mbPer5Sec.toFixed(2)
+    formatted: mbPer5Sec.toFixed(2),
+    average: averageSpeed.toFixed(2),
+    history: speeds
   });
 });
 
@@ -116,7 +132,7 @@ app.post('/api/check-connection', async (req, res) => {
 
 app.post('/api/adjust-concurrent', async (req, res) => {
   const { count } = req.body;
-  
+
   if (count < 2 || count > 30) {
     return res.status(400).json({ error: 'Count must be between 2 and 30' });
   }
@@ -126,23 +142,24 @@ app.post('/api/adjust-concurrent', async (req, res) => {
   }
 
   try {
+    // Get all running random download processes
     const randomProcesses = Object.values(downloadProgressMap)
       .flatMap(info => info.processes)
       .filter(process => process.name === 'download_dropbox_random.py');
 
     const currentCount = randomProcesses.length;
-    
+
     if (count > currentCount) {
       // Need to spawn more processes
       const toSpawn = count - currentCount;
       for (let i = 0; i < toSpawn; i++) {
         Object.keys(downloadProgressMap).forEach(downloadId => {
           const { dropboxToken, sharedLink, destinationPath } = currentDownloadParams;
-          const pyProcess = spawn('bash', ['-c', 
+          const pyProcess = spawn('bash', ['-c',
             `source venv/bin/activate && python3 "${path.join(__dirname, 'download_dropbox_random.py')}" ` +
             `"${dropboxToken}" "${sharedLink}" "${destinationPath}" "download_dropbox_random.py"`
           ]);
-          
+
           console.log(`Spawned new random download process with PID: ${pyProcess.pid}`);
           downloadProgressMap[downloadId].processes.push({pid: pyProcess.pid, name: 'download_dropbox_random.py'});
           pidToDownloadId[pyProcess.pid] = downloadId;
@@ -165,6 +182,10 @@ app.post('/api/adjust-concurrent', async (req, res) => {
   }
 });
 
+let downloadId;
+let downloadProgressMap = {};
+let pidToDownloadId = {};
+
 app.post('/api/download', async (req, res) => {
   const { dropboxToken, sharedLink, destinationPath } = req.body;
 
@@ -174,21 +195,14 @@ app.post('/api/download', async (req, res) => {
     });
   }
 
-  const downloadId = uuidv4();
-  downloadProgressMap[downloadId] = {
-    totalFiles: 0,
-    downloadedFiles: 0,
-    currentFile: '',
-    error: '',
-    processes: [],
-  };
-
-  // Clear old progress files
-  fs.readdirSync(__dirname).forEach(file => {
-    if (file.startsWith("progress_")) {
-      fs.unlinkSync(path.join(__dirname, file));
-    }
-  });
+  downloadId = uuidv4();
+    downloadProgressMap[downloadId] = {
+        totalFiles: 0,
+        downloadedFiles: 0,
+        currentFile: '',
+        error: '',
+        processes: [],
+    };
 
   try {
     // Store current download parameters
@@ -199,20 +213,24 @@ app.post('/api/download', async (req, res) => {
     };
 
     const spawnPythonScript = (scriptName) => {
-      const pyProcess = spawn('bash', ['-c', 
+      const pyProcess = spawn('bash', ['-c',
         `source venv/bin/activate && python3 "${path.join(__dirname, scriptName)}" ` +
         `"${dropboxToken}" "${sharedLink}" "${destinationPath}" "${scriptName}"`
       ]);
 
-      downloadProgressMap[downloadId].processes.push({pid: pyProcess.pid, name: scriptName});
+      downloadProgressMap[downloadId].processes.push({ pid: pyProcess.pid, name: scriptName });
       pidToDownloadId[pyProcess.pid] = downloadId;
 
       pyProcess.stdout.on('data', (data) => {
-        console.log(`stdout (${scriptName}): ${data}`);
+        const logMessage = `stdout (${scriptName}): ${data}`;
+        console.log("Emitting log:", { type: 'stdout', message: logMessage, pid: pyProcess.pid });
+        io.emit('log', { type: 'stdout', message: logMessage, pid: pyProcess.pid });
       });
 
       pyProcess.stderr.on('data', (data) => {
-        console.error(`stderr (${scriptName}): ${data}`);
+        const logMessage = `stderr (${scriptName}): ${data}`;
+        console.log("Emitting log:", { type: 'stderr', message: logMessage, pid: pyProcess.pid });
+        io.emit('log', { type: 'stderr', message: logMessage, pid: pyProcess.pid });
       });
 
       pyProcess.on('close', (code) => {
@@ -241,40 +259,9 @@ app.post('/api/download', async (req, res) => {
   } catch (error) {
     console.error('Error starting download:', error);
     currentDownloadParams = null;
-    delete downloadProgressMap[downloadId];
     stopSpeedMonitoring();
     res.status(500).json({ error: error.message });
   }
-});
-
-app.get('/api/progress/:downloadId', (req, res) => {
-  const { downloadId } = req.params;
-  let totalFiles = 0;
-  let downloadedFiles = 0;
-  let error = '';
-
-  const progressInfo = downloadProgressMap[downloadId];
-  if (!progressInfo) {
-    return res.json({ totalFiles: 0, downloadedFiles: 0, error: 'Download ID not found' });
-  }
-
-  for (const processInfo of progressInfo.processes) {
-    const { pid, name } = processInfo;
-    const progressFile = path.join(__dirname, `progress_${name.replace('.py', '')}_${pid}.txt`);
-    
-    try {
-      if (fs.existsSync(progressFile)) {
-        const data = fs.readFileSync(progressFile, 'utf8');
-        const [total, downloaded] = data.split(' ').map(Number);
-        totalFiles += total;
-        downloadedFiles += downloaded;
-      }
-    } catch (err) {
-      error += `Error reading progress file ${progressFile}: ${err.message}; `;
-    }
-  }
-
-  res.json({ totalFiles, downloadedFiles, error });
 });
 
 app.post('/api/stop-download', (req, res) => {
@@ -292,16 +279,10 @@ app.post('/api/stop-download', (req, res) => {
       }
     });
 
-    // Clean up progress files
-    fs.readdirSync(__dirname).forEach(file => {
-      if (file.startsWith("progress_")) {
-        fs.unlinkSync(path.join(__dirname, file));
-      }
-    });
-
     downloadProgressMap = {};
     pidToDownloadId = {};
     currentDownloadParams = null;
+    processLogs = {};
     stopSpeedMonitoring();
     res.json({ message: 'Downloads stopped' });
   } catch (error) {
