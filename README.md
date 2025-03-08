@@ -1,4 +1,9 @@
 # Dropbox Folder Downloader
+<p align="center">
+   <img src="README_assets/issue.png" alt="Issue" width="70%">
+</p>
+
+Do you experience this problem when trying to download big folders on Dropbox?
 
 <p align="center">
     <img src="README_assets/UI-left.png" alt="UI Left" width="45%">
